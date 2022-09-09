@@ -1,12 +1,11 @@
-require('dotenv').config({path:"vars/.env"});
+require('dotenv').config({ path: "vars/.env" });
 const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
-const encrypt = require("mongoose-encryption");
 const ejs = require("ejs");
-
 const app = express();
-
+const bcrypt = require("bcrypt");
+const saltRound = 10;
 
 app.use(express.static("public"));
 app.set('view engine', 'ejs');
@@ -24,7 +23,6 @@ const userSchema = new mongoose.Schema({
 
 const secret = process.env.SECRET_KEY;
 console.log(secret)
-userSchema.plugin(encrypt,{secret:secret,encryptedFields:['password']})
 
 const User = mongoose.model("User", userSchema);
 
@@ -39,19 +37,21 @@ app.route("/login")
         res.render("login");
     })
     .post(function (req, res) {
-        User.findOne({ email: req.body.username }, function (err, foundUser) {
+        const username = req.body.username;
+        const password = req.body.password;
+        User.findOne({ email: username }, function (err, foundUser) {
             if (err) {
-                res.send(err)
+                res.send(err);
             } else {
                 if (foundUser) {
-                    if (foundUser.password === req.body.password) {
-                        res.render("secrets");
-                    } else {
-                        res.render("home")
-                    }
+                    bcrypt.compare(password, foundUser.password, function (err, result) {
+                        if (result === true) {
+                            res.render("secrets");
+                        }
+                    });
                 }
             }
-        })
+        });
     });
 
 // Register Page
@@ -60,28 +60,30 @@ app.route("/register")
         res.render("register");
     })
     .post(function (req, res) {
-        const newUser = new User({
-            email: req.body.username,
-            password: req.body.password
-        });
-        User.findOne({ email: req.body.username }, function (err, userExist) {
-            if (err) {
-                res.send(err);
-            } else {
-                if (userExist) {
-                    res.send("User Already Exist with the given Email");
-                } else {
-                    newUser.save(function (err) {
-                        if (!err) {
-                            res.render("secrets");
-                        } else {
-                            res.send(err);
-                        }
-                    });
-                }
-            }
-        })
 
+        bcrypt.hash(req.body.password, saltRound, function (err, hash) {
+            const newUser = new User({
+                email: req.body.username,
+                password: hash
+            });
+            User.findOne({ email: req.body.username }, function (err, userExist) {
+                if (err) {
+                    res.send(err);
+                } else {
+                    if (userExist) {
+                        res.send("User Already Exist with the given Email");
+                    } else {
+                        newUser.save(function (err) {
+                            if (!err) {
+                                res.render("secrets");
+                            } else {
+                                res.send(err);
+                            }
+                        });
+                    }
+                }
+            });
+        });
     });
 
 
