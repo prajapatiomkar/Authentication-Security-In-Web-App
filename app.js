@@ -1,13 +1,12 @@
+require('dotenv').config();
 const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const encrypt = require("mongoose-encryption");
-const dotenv = require("dotenv");
 const ejs = require("ejs");
 
 const app = express();
 
-dotenv.config({path:"./.env"});
 
 app.use(express.static("public"));
 app.set('view engine', 'ejs');
