@@ -3,15 +3,27 @@ const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+const { initialize, use } = require('passport');
 const app = express();
-const bcrypt = require("bcrypt");
-const saltRound = 10;
+
 
 app.use(express.static("public"));
 app.set('view engine', 'ejs');
 app.use(bodyParser.urlencoded({
     extended: true
 }));
+
+app.use(session({
+    secret: "sample secret",
+    resave: false,
+    saveUninitialized: false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
@@ -21,10 +33,16 @@ const userSchema = new mongoose.Schema({
     password: String
 })
 
+userSchema.plugin(passportLocalMongoose);
+
 const secret = process.env.SECRET_KEY;
 console.log(secret)
 
 const User = mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 // Home Page
 app.get("/", function (req, res) {
@@ -37,21 +55,20 @@ app.route("/login")
         res.render("login");
     })
     .post(function (req, res) {
-        const username = req.body.username;
-        const password = req.body.password;
-        User.findOne({ email: username }, function (err, foundUser) {
-            if (err) {
-                res.send(err);
-            } else {
-                if (foundUser) {
-                    bcrypt.compare(password, foundUser.password, function (err, result) {
-                        if (result === true) {
-                            res.render("secrets");
-                        }
-                    });
-                }
-            }
+        const user = new User({
+            username:req.body.username,
+            password:req.body.password
         });
+
+        req.login(user,function(err){
+            if(err){
+                console.log(err);
+            }else{
+                passport.authenticate("local")(req, res, function () {
+                    res.redirect("/secrets")
+                })
+            }
+        })
     });
 
 // Register Page
@@ -60,33 +77,32 @@ app.route("/register")
         res.render("register");
     })
     .post(function (req, res) {
+        User.register({ username: req.body.username }, req.body.password, function (err, user) {
+            if (err) {
+                console.log(err)
+                res.redirect("/register")
+            } else {
+                passport.authenticate("local")(req, res, function () {
+                    res.redirect("/secrets")
+                })
+            }
+        })
 
-        bcrypt.hash(req.body.password, saltRound, function (err, hash) {
-            const newUser = new User({
-                email: req.body.username,
-                password: hash
-            });
-            User.findOne({ email: req.body.username }, function (err, userExist) {
-                if (err) {
-                    res.send(err);
-                } else {
-                    if (userExist) {
-                        res.send("User Already Exist with the given Email");
-                    } else {
-                        newUser.save(function (err) {
-                            if (!err) {
-                                res.render("secrets");
-                            } else {
-                                res.send(err);
-                            }
-                        });
-                    }
-                }
-            });
-        });
     });
 
-
+app.get("/secrets", function (req, res) {
+    if(req.isAuthenticated()){
+        res.render("secrets")
+    }else{
+        res.render("login")
+    }
+});
+app.get("/logout",function(req,res){
+    req.logout(function(err) {
+        if (err) { return next(err); }
+        res.redirect('/');
+      });
+})
 app.listen(3000, function () {
     console.log("Server Started http://localhost:3000");
 })
